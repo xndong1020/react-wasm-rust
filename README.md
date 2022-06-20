@@ -1,46 +1,156 @@
-# Getting Started with Create React App
+```rust
+cargo new wasm-lib --lib
+```
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+step 2: update wasm-lib/Cargo.toml file
 
-## Available Scripts
+```toml
+[package]
+name = "rusty-react"
+version = "1.0.0"
+edition = "2021"
 
-In the project directory, you can run:
+[lib]
+crate-type = ["cdylib"]
 
-### `npm start`
+[dependencies]
+wasm-bindgen = "0.2"
+```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+step 3: to download packages & build
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```
+cargo build
+```
 
-### `npm test`
+step 4:
+This build in-itself did not do much for us, we’ll need to add a useful taraget for our builds. To add a new target for Rust, we can run the following command:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```
+rustup target add wasm32-unknown-unknown
+```
 
-### `npm run build`
+This will give us the appropriate target for our compiled Rust code, allowing us to add it to our React application.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+output:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```
+info: downloading component 'rust-std' for 'wasm32-unknown-unknown'
+info: installing component 'rust-std' for 'wasm32-unknown-unknown'
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+step 5: add a new func
 
-### `npm run eject`
+```rust
+use wasm_bindgen::prelude::*;
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+#[wasm_bindgen]
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+#[test]
+fn add_test() {
+    assert_eq!(1 + 1, add(1, 1));
+}
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+step 6: Build as Wasm library with wasm-pack
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+By using wasm-bindgen, you can build Rust as Wasm. However, To load and run Wasm from JavaScript, You need some JavaScript boilerplate codes (like WebAssembly.instantiate).
 
-## Learn More
+To do that, you can use wasm-pack!
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```
+cargo install wasm-pack
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+step 7: add a npm script
+
+```
+"build:wasm": "cd wasm-lib && wasm-pack build --target web --out-dir pkg"
+```
+
+run `yarn build:wasm` will generate a `wasm-lib\pkg` folder, which contains
+
+```
+pkg
+├── package.json
+├── wasm_lib.d.ts
+├── wasm_lib.js
+├── wasm_lib_bg.wasm
+└── wasm_lib_bg.wasm.d.ts
+```
+
+From the `wasm_lib.d.ts`, it has a `init` function, and a `add` function
+
+```ts
+/* tslint:disable */
+/* eslint-disable */
+/**
+ * @param {number} a
+ * @param {number} b
+ * @returns {number}
+ */
+export function add(a: number, b: number): number;
+
+export type InitInput =
+  | RequestInfo
+  | URL
+  | Response
+  | BufferSource
+  | WebAssembly.Module;
+
+export interface InitOutput {
+  readonly memory: WebAssembly.Memory;
+  readonly add: (a: number, b: number) => number;
+}
+
+/**
+ * If `module_or_path` is {RequestInfo} or {URL}, makes a request and
+ * for everything else, calls `WebAssembly.instantiate` directly.
+ *
+ * @param {InitInput | Promise<InitInput>} module_or_path
+ *
+ * @returns {Promise<InitOutput>}
+ */
+export default function init(
+  module_or_path?: InitInput | Promise<InitInput>
+): Promise<InitOutput>;
+```
+
+step 8:
+So you can install the Wasm library to other project easily. Let’s install it to the React app.
+
+```
+npm i ./wasm-lib/pkg
+```
+
+this package will be installed as `"wasm-lib": "file:wasm-lib/pkg",`
+
+step 9: Call the Wasm function from the React app.
+
+App.tsx
+```tsx
+import React, { useState, useEffect } from "react";
+import init, { add } from "wasm-lib";
+import "./App.css";
+
+function App() {
+  const [ans, setAns] = useState(0);
+  useEffect(() => {
+    init().then(() => {
+      setAns(add(1, 1));
+    });
+  }, []);
+  return (
+    <div className="App">
+      <header className="App-header">
+        <p>1 + 1 = {ans}</p>
+      </header>
+    </div>
+  );
+}
+
+export default App;
+```
